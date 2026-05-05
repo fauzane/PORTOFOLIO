@@ -1,438 +1,216 @@
-import React, { useState, useEffect } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  onSnapshot, 
-  collection, 
-  addDoc, 
-  query, 
-  serverTimestamp 
-} from 'firebase/firestore';
-import { 
-  TrendingUp, Award, Map, PenTool, Mail, Phone, Instagram, 
-  Settings, Save, Plus, Trash2, X, ChevronRight, ExternalLink,
-  Sparkles, Loader2, Wand2, Lock, LogOut, Image as ImageIcon,
-  Key, CheckCircle2, AlertCircle, Send, MessageSquare, Briefcase
-} from 'lucide-react';
-
-// --- Firebase & API Configuration ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'salman-pro-v4';
-const apiKey = ""; 
-
-// Email admin yang diizinkan
-const ALLOWED_ADMIN_EMAILS = ["andika.salman@gmail.com", "fawzaneko@gmail.com"];
-
-const DEFAULT_DATA = {
-  profile: {
-    name: "Andika Salman Albani",
-    role: "Creative Strategist & Visual Engineer",
-    bio: "Mentransformasi konsep abstrak menjadi aset visual berperforma tinggi melalui presisi geometris dan strategi pertumbuhan digital.",
-    email: "andika.salman@gmail.com",
-    phone: "6285600016162", // Digunakan untuk WhatsApp direct link
-    instagram: "andksimn_422"
-  },
-  projects: [
-    { id: '1', title: 'Growth Strategy: Kantin Fairuz', category: 'Digital Strategist', impact: '+500 Followers', icon: 'trending-up', imageUrl: '' },
-    { id: '2', title: 'International Content Creator', category: 'Graphic Design', impact: 'Juara II Dies Natalis UNS', icon: 'award', imageUrl: '' },
-    { id: '3', title: 'Ekspedisi Seribu Pulau', category: 'Creative Branding', impact: 'Proyek Raja Ampat', icon: 'map', imageUrl: '' }
-  ]
-};
-
-// --- Helper Functions ---
-const getDriveImageUrl = (url) => {
-  if (!url) return null;
-  const match = url.match(/\/(?:d|file\/d|open\?id=)\/([a-zA-Z0-9_-]+)/);
-  return match ? `https://lh3.googleusercontent.com/d/${match[1]}` : url;
-};
-
-const RenderIcon = ({ name, size = 28, className = "" }) => {
-  const props = { size, className };
-  switch(name) {
-    case 'trending-up': return <TrendingUp {...props} />;
-    case 'award': return <Award {...props} />;
-    case 'map': return <Map {...props} />;
-    default: return <PenTool {...props} />;
-  }
-};
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [data, setData] = useState(null);
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  
-  // Client Request Form State
-  const [requestForm, setRequestForm] = useState({ name: '', email: '', type: 'Pamflet', description: '' });
-  const [formStatus, setFormStatus] = useState(null); // 'submitting', 'success', 'error'
-  const [clientRequests, setClientRequests] = useState([]); // Untuk admin view
-
-  // Auth Form State
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [authMessage, setAuthMessage] = useState('');
-
-  useEffect(() => {
-    const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    
-    // Listen to Main Portfolio Data
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'portfolio', 'main');
-    const unsubData = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) setData(docSnap.data());
-      else {
-        setData(DEFAULT_DATA);
-        setDoc(docRef, DEFAULT_DATA).catch(e => console.error(e));
-      }
-      setLoading(false);
-    }, () => setLoading(false));
-
-    // Listen to Client Requests (Only if Admin)
-    let unsubRequests = () => {};
-    if (!user.isAnonymous && ALLOWED_ADMIN_EMAILS.includes(user.email?.toLowerCase())) {
-      const q = collection(db, 'artifacts', appId, 'public', 'data', 'requests');
-      unsubRequests = onSnapshot(q, (snapshot) => {
-        const reqs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        setClientRequests(reqs);
-      });
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Andika Salman Albani | Portfolio</title>
+  <meta name="description" content="Portfolio Andika Salman Albani - Creative Strategist & Visual Engineer. Desain, branding, strategi digital." />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #020617;
+      --surface: rgba(15, 23, 42, 0.82);
+      --surface-strong: rgba(15, 23, 42, 0.95);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #2563eb;
+      --accent-soft: rgba(37, 99, 235, 0.16);
+      --success: #22c55e;
+      --border: rgba(148, 163, 184, 0.16);
+      font-family: Inter, system-ui, sans-serif;
     }
 
-    return () => { unsubData(); unsubRequests(); };
-  }, [user]);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setAuthError('');
-    if (!ALLOWED_ADMIN_EMAILS.includes(email.toLowerCase())) {
-      setAuthError('Email ini tidak memiliki hak akses admin.');
-      return;
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, rgba(37, 99, 235, 0.18), transparent 25%),
+                  radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.12), transparent 18%),
+                  var(--bg);
+      color: var(--text);
     }
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      setIsLoginModalOpen(false);
-      setIsAdminMode(true);
-      setPassword('');
-    } catch (err) {
-      setAuthError('Email atau password salah.');
+
+    img { max-width: 100%; display: block; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; }
+
+    .page { width: min(1120px, 100%); margin: 0 auto; padding: 0 24px; }
+    nav { display: flex; justify-content: space-between; align-items: center; padding: 24px 0; }
+    .brand { font-size: 1rem; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; }
+    .nav-links { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+    .nav-links a { color: var(--muted); font-size: 0.92rem; transition: color 0.2s ease; }
+    .nav-links a:hover { color: var(--text); }
+
+    .hero { display: grid; gap: 28px; align-items: center; min-height: calc(100vh - 120px); padding-bottom: 24px; }
+    .hero-content { max-width: 640px; }
+    .hero-label { display: inline-flex; align-items: center; gap: 0.65rem; font-size: 0.78rem; letter-spacing: 0.25em; text-transform: uppercase; font-weight: 700; color: var(--accent); }
+    .hero-title { font-size: clamp(3rem, 5vw, 5.5rem); line-height: 0.95; margin: 24px 0 20px; }
+    .hero-text { font-size: 1.05rem; line-height: 1.8; color: var(--muted); }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 28px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 16px 28px; border-radius: 999px; border: 1px solid transparent; transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease; cursor: pointer; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { transform: translateY(-2px); }
+    .btn-secondary { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: var(--text); }
+    .btn-secondary:hover { transform: translateY(-2px); border-color: var(--accent); }
+
+    .hero-grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .card { border-radius: 28px; padding: 32px; background: var(--surface); border: 1px solid var(--border); backdrop-filter: blur(18px); }
+    .card-strong { background: #111827; }
+    .card-title { font-size: 1.15rem; margin-bottom: 10px; font-weight: 700; }
+    .card-text { color: var(--muted); line-height: 1.7; }
+
+    section { padding: 100px 0; }
+    h2.section-heading { font-size: clamp(2rem, 4vw, 3rem); margin: 0 0 18px; }
+    .section-subtitle { color: var(--muted); max-width: 720px; line-height: 1.85; }
+
+    .projects-grid { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .project-card { border-radius: 28px; overflow: hidden; background: linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.95)); border: 1px solid rgba(148,163,184,0.1); transition: transform 0.2s ease, border-color 0.2s ease; }
+    .project-card:hover { transform: translateY(-6px); border-color: rgba(37,99,235,0.3); }
+    .project-card-inner { padding: 28px; }
+    .project-category { font-size: 0.78rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+    .project-title { font-size: 1.4rem; margin-bottom: 12px; }
+    .project-meta { color: #86efac; font-weight: 700; }
+
+    .request-panel { display: grid; gap: 28px; grid-template-columns: 1.3fr 1fr; background: var(--surface); border: 1px solid var(--border); border-radius: 36px; padding: 36px; }
+    .request-panel h3 { margin-top: 0; font-size: 2rem; }
+    .feature-list { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 12px; }
+    .feature-item { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.98rem; }
+    .feature-marker { width: 18px; height: 18px; border-radius: 999px; background: var(--accent-soft); display: grid; place-items: center; color: var(--accent); font-size: 0.8rem; }
+
+    .contact-grid { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .contact-card { background: var(--surface); border: 1px solid var(--border); border-radius: 28px; padding: 28px; transition: transform 0.2s ease; }
+    .contact-card:hover { transform: translateY(-4px); }
+    .contact-card-title { margin: 0 0 10px; font-size: 1.1rem; }
+    .contact-card-text { color: var(--muted); line-height: 1.7; }
+
+    .footer { border-top: 1px solid rgba(148,163,184,0.08); padding: 32px 0 16px; text-align: center; color: var(--muted); font-size: 0.85rem; letter-spacing: 0.16em; text-transform: uppercase; }
+
+    .highlight { color: var(--accent); }
+    .badge { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; font-size: 0.72rem; color: var(--accent); margin-bottom: 18px; }
+
+    @media (max-width: 720px) {
+      nav { flex-direction: column; align-items: flex-start; gap: 18px; }
+      .hero { min-height: auto; }
+      .hero-actions { flex-direction: column; align-items: stretch; }
+      .request-panel { grid-template-columns: 1fr; }
+      .page { padding: 0 16px; }
+      section { padding: 72px 0; }
     }
-  };
-
-  const handleResetPassword = async () => {
-    if (!email || !ALLOWED_ADMIN_EMAILS.includes(email.toLowerCase())) {
-      setAuthError('Masukkan email admin yang valid.');
-      return;
-    }
-    try {
-      await sendPasswordResetEmail(auth, email);
-      setAuthMessage('Link reset password telah dikirim ke email.');
-    } catch (err) {
-      setAuthError('Gagal mengirim email reset.');
-    }
-  };
-
-  const handleLogout = async () => {
-    await signOut(auth);
-    await signInAnonymously(auth);
-    setIsAdminMode(false);
-  };
-
-  const handleSave = async (updatedData) => {
-    if (!user || user.isAnonymous) return;
-    try {
-      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'portfolio', 'main');
-      await setDoc(docRef, updatedData);
-      setIsAdminMode(false);
-    } catch (err) { console.error(err); }
-  };
-
-  const submitClientRequest = async (e) => {
-    e.preventDefault();
-    setFormStatus('submitting');
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'requests'), {
-        ...requestForm,
-        createdAt: serverTimestamp()
-      });
-      setFormStatus('success');
-      setRequestForm({ name: '', email: '', type: 'Pamflet', description: '' });
-      setTimeout(() => setFormStatus(null), 5000);
-    } catch (err) {
-      setFormStatus('error');
-    }
-  };
-
-  if (loading || !data) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-bold tracking-widest animate-pulse">
-      SALMAN.OS SECURE BOOT...
-    </div>
-  );
-
-  const isRealAdmin = user && !user.isAnonymous && ALLOWED_ADMIN_EMAILS.includes(user.email?.toLowerCase());
-
-  return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-blue-500/30 font-sans scroll-smooth">
-      
-      {/* Floating Buttons */}
-      <div className="fixed bottom-8 right-8 z-[100] flex flex-col gap-4">
-        {isRealAdmin ? (
-          <>
-            <button onClick={() => setIsAdminMode(!isAdminMode)} className="p-4 bg-blue-600 text-white rounded-full shadow-xl border border-blue-400"><Settings size={20} /></button>
-            <button onClick={handleLogout} className="p-4 bg-red-600/20 text-red-500 rounded-full border border-red-500/20"><LogOut size={20} /></button>
-          </>
-        ) : (
-          <button onClick={() => setIsLoginModalOpen(true)} className="p-4 bg-white/5 backdrop-blur-xl border border-white/10 text-slate-400 rounded-full"><Lock size={20} /></button>
-        )}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav>
+      <div class="brand">SALMAN.DESIGN</div>
+      <div class="nav-links">
+        <a href="#work">Portfolio</a>
+        <a href="#request">Jasa</a>
+        <a href="#contact">Kontak</a>
       </div>
+    </nav>
 
-      {/* Login Modal */}
-      {isLoginModalOpen && (
-        <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
-          <div className="bg-slate-900 border border-white/10 p-8 rounded-[2rem] w-full max-w-md shadow-2xl">
-            <div className="text-center mb-8">
-              <Lock size={32} className="mx-auto mb-4 text-blue-500" />
-              <h3 className="text-2xl font-bold text-white">Admin Authentication</h3>
-            </div>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white" placeholder="Email Admin" />
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white" placeholder="Password" />
-              {authError && <div className="text-red-400 text-xs">{authError}</div>}
-              {authMessage && <div className="text-green-400 text-xs">{authMessage}</div>}
-              <button type="submit" className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold uppercase tracking-widest">Login</button>
-            </form>
-            <button onClick={handleResetPassword} className="w-full mt-4 text-blue-400 text-[10px] uppercase font-bold tracking-widest">Aktivasi / Reset Password</button>
-            <button onClick={() => setIsLoginModalOpen(false)} className="w-full mt-4 text-slate-500 text-[10px] uppercase font-bold">Batal</button>
+    <section class="hero">
+      <div class="hero-content">
+        <div class="hero-label">Creative Strategist & Visual Engineer</div>
+        <h1 class="hero-title">Saya adalah Andika Salman Albani, pembuat desain visual yang berdampak.</h1>
+        <p class="hero-text">Mentransformasi ide menjadi komunikasi visual yang kuat untuk kampanye digital, acara, dan branding. Dari pamflet hingga konten Instagram, saya hadir untuk membuat pesan Anda terlihat profesional dan berkesan.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#request">Pesan Sekarang</a>
+          <a class="btn btn-secondary" href="#contact">Hubungi Saya</a>
+          <a class="btn btn-secondary" href="https://fauzane.github.io/PORTOFOLIO/" target="_blank">Akses Publik</a>
+        </div>
+      </div>
+      <div class="hero-grid">
+        <div class="card">
+          <div class="card-title">+500 Followers Growth</div>
+          <p class="card-text">Meningkatkan engagement dan visibilitas digital dengan konten visual yang relevan dan terstruktur.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">Juara II Dies Natalis UNS</div>
+          <p class="card-text">Pencapaian prestisius dalam kompetisi desain konten internasional dan presentasi kreatif.</p>
+        </div>
+        <div class="card card-strong">
+          <div class="card-title">Proyek Raja Ampat</div>
+          <p class="card-text">Branding dan materi promosi kreatif untuk ekspedisi pariwisata premium.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="work">
+      <h2 class="section-heading">Selected Works</h2>
+      <p class="section-subtitle">Tiga proyek utama yang menunjukkan kekuatan strategi visual dan kreativitas desain saya dalam berbagai format dan tujuan.</p>
+      <div class="projects-grid">
+        <article class="project-card">
+          <div class="project-card-inner">
+            <div class="project-category">Digital Strategist</div>
+            <h3 class="project-title">Growth Strategy: Kantin Fairuz</h3>
+            <div class="project-meta">+500 Followers</div>
           </div>
-        </div>
-      )}
-
-      {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center px-6">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(59,130,246,0.1)_0%,_transparent_50%)]" />
-        <div className="max-w-6xl w-full relative z-10 text-center">
-          <div className="inline-block px-4 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black tracking-[0.3em] uppercase mb-8">{data.profile.role}</div>
-          <h1 className="text-7xl md:text-[100px] font-bold tracking-tighter leading-none mb-10 text-white">{data.profile.name}</h1>
-          <p className="max-w-xl mx-auto text-slate-400 text-lg md:text-xl font-light mb-12">{data.profile.bio}</p>
-          <div className="flex justify-center gap-4">
-            <a href="#request" className="px-8 py-4 bg-blue-600 text-white rounded-full font-bold text-sm tracking-widest hover:scale-105 transition-transform flex items-center gap-2">
-              <PenTool size={18} /> PESAN DESAIN
-            </a>
-            <a href="#contact" className="px-8 py-4 bg-white/5 border border-white/10 text-white rounded-full font-bold text-sm tracking-widest hover:bg-white/10 transition-colors">
-              HUBUNGI SAYA
-            </a>
+        </article>
+        <article class="project-card">
+          <div class="project-card-inner">
+            <div class="project-category">Graphic Design</div>
+            <h3 class="project-title">International Content Creator</h3>
+            <div class="project-meta">Juara II Dies Natalis UNS</div>
           </div>
-        </div>
-      </section>
-
-      {/* Projects Section */}
-      <section id="work" className="py-20 px-6 max-w-7xl mx-auto">
-        <h2 className="text-3xl font-bold mb-12 text-center">Selected Works</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {data.projects.map((project) => (
-            <div key={project.id} className="group bg-slate-900/50 backdrop-blur-xl border border-white/5 rounded-[2.5rem] overflow-hidden hover:border-blue-500/30 transition-all flex flex-col">
-              <div className="h-64 bg-slate-800 relative">
-                {project.imageUrl ? (
-                  <img src={getDriveImageUrl(project.imageUrl)} alt={project.title} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-700"><ImageIcon size={48} /></div>
-                )}
-                <div className="absolute top-6 left-6 w-12 h-12 bg-black/50 backdrop-blur-xl rounded-2xl flex items-center justify-center text-blue-400">
-                  <RenderIcon name={project.icon} size={20} />
-                </div>
-              </div>
-              <div className="p-8">
-                <h3 className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-2">{project.category}</h3>
-                <h4 className="text-xl font-bold text-white mb-2">{project.title}</h4>
-                <div className="text-green-400 text-sm font-bold flex items-center gap-1"><ChevronRight size={14}/> {project.impact}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Service Request Section */}
-      <section id="request" className="py-32 px-6">
-        <div className="max-w-4xl mx-auto bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[3rem] p-12 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none"><PenTool size={200} /></div>
-          
-          <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-16">
-            <div>
-              <h2 className="text-4xl font-bold text-white mb-6 leading-tight">Mulai Proyek <br/><span className="text-blue-500">Kreatif Anda</span></h2>
-              <p className="text-slate-400 mb-8 leading-relaxed">Punya ide pamflet atau poster yang ingin diwujudkan? Beritahu saya detailnya dan mari kita buat sesuatu yang luar biasa.</p>
-              
-              <ul className="space-y-4">
-                {['Revisi Sepuasnya*', 'Kualitas Resolusi Tinggi', 'Format File Lengkap (AI, PDF, PNG)', 'Waktu Pengerjaan Cepat'].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm text-slate-300 font-medium">
-                    <div className="w-5 h-5 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500"><CheckCircle2 size={12}/></div>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <form onSubmit={submitClientRequest} className="space-y-4">
-              <input required type="text" placeholder="Nama Anda" value={requestForm.name} onChange={(e) => setRequestForm({...requestForm, name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white outline-none focus:border-blue-500 transition-colors" />
-              <input required type="email" placeholder="Email / WhatsApp" value={requestForm.email} onChange={(e) => setRequestForm({...requestForm, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white outline-none focus:border-blue-500 transition-colors" />
-              <select value={requestForm.type} onChange={(e) => setRequestForm({...requestForm, type: e.target.value})} className="w-full bg-[#1e293b] border border-white/10 rounded-2xl px-6 py-4 text-white outline-none">
-                <option value="Pamflet">Pamflet Digital</option>
-                <option value="Poster">Poster Event</option>
-                <option value="Logo">Logo Branding</option>
-                <option value="Sosmed">Konten Instagram</option>
-              </select>
-              <textarea required rows="4" placeholder="Deskripsikan desain yang Anda mau..." value={requestForm.description} onChange={(e) => setRequestForm({...requestForm, description: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white outline-none focus:border-blue-500 transition-colors" />
-              
-              <button disabled={formStatus === 'submitting'} className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold flex items-center justify-center gap-3 transition-all disabled:opacity-50">
-                {formStatus === 'submitting' ? <Loader2 className="animate-spin" /> : <><Send size={18} /> KIRIM PERMINTAAN</>}
-              </button>
-
-              {formStatus === 'success' && <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl text-green-400 text-sm font-medium text-center animate-in fade-in slide-in-from-bottom-2">Permintaan terkirim! Salman akan menghubungi Anda segera.</div>}
-            </form>
+        </article>
+        <article class="project-card">
+          <div class="project-card-inner">
+            <div class="project-category">Creative Branding</div>
+            <h3 class="project-title">Ekspedisi Seribu Pulau</h3>
+            <div class="project-meta">Proyek Raja Ampat</div>
           </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="request">
+      <div class="request-panel">
+        <div>
+          <div class="badge">Layanan Desain</div>
+          <h3>Mulai Proyek Kreatif Anda</h3>
+          <p class="card-text">Butuh pamflet, poster, materi digital, atau branding acara? Kirim detail Anda, dan saya akan menyediakan desain yang jelas, berdampak, dan siap pakai.</p>
+          <ul class="feature-list">
+            <li class="feature-item"><span class="feature-marker">✓</span> Revisi sepenuhnya sampai puas</li>
+            <li class="feature-item"><span class="feature-marker">✓</span> File final dalam AI, PDF, dan PNG</li>
+            <li class="feature-item"><span class="feature-marker">✓</span> Format siap cetak & digital</li>
+            <li class="feature-item"><span class="feature-marker">✓</span> Penyelesaian cepat sesuai deadline</li>
+          </ul>
         </div>
-      </section>
-
-      {/* Contact Section */}
-      <section id="contact" className="py-32 px-6 border-t border-white/5 bg-slate-950/50">
-        <div className="max-w-7xl mx-auto text-center">
-          <h2 className="text-4xl font-bold mb-4">Hubungi Saya</h2>
-          <p className="text-slate-500 mb-16 uppercase tracking-[0.3em] text-xs font-black">Ready to collaborate?</p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <a href={`https://wa.me/${data.profile.phone}`} target="_blank" className="p-10 bg-white/5 rounded-[2rem] border border-white/5 hover:border-green-500/30 transition-all group">
-              <div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform"><MessageSquare size={32} /></div>
-              <h3 className="text-xl font-bold mb-2 text-white">WhatsApp</h3>
-              <p className="text-slate-500 text-sm">Respons cepat via pesan langsung</p>
-            </a>
-            <a href={`mailto:${data.profile.email}`} className="p-10 bg-white/5 rounded-[2rem] border border-white/5 hover:border-blue-500/30 transition-all group">
-              <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform"><Mail size={32} /></div>
-              <h3 className="text-xl font-bold mb-2 text-white">Email</h3>
-              <p className="text-slate-500 text-sm">{data.profile.email}</p>
-            </a>
-            <a href={`https://instagram.com/${data.profile.instagram.replace('@', '')}`} target="_blank" className="p-10 bg-white/5 rounded-[2rem] border border-white/5 hover:border-purple-500/30 transition-all group">
-              <div className="w-16 h-16 bg-purple-500/10 text-purple-500 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform"><Instagram size={32} /></div>
-              <h3 className="text-xl font-bold mb-2 text-white">Instagram</h3>
-              <p className="text-slate-500 text-sm">{data.profile.instagram}</p>
-            </a>
-          </div>
+        <div class="card">
+          <div class="card-title">Cara Pesan</div>
+          <p class="card-text">Gunakan tombol kontak di bawah untuk menjelaskan kebutuhan desain Anda, termasuk jenis proyek, pesan utama, dan target audiens.</p>
+          <p class="card-text"><strong>WA:</strong> <a href="https://wa.me/6285600016162" target="_blank">+62 856-0001-6162</a></p>
+          <p class="card-text"><strong>Email:</strong> <a href="mailto:andika.salman@gmail.com">andika.salman@gmail.com</a></p>
+          <p class="card-text"><strong>Instagram:</strong> <a href="https://instagram.com/andksimn_422" target="_blank">@andksimn_422</a></p>
         </div>
-      </section>
+      </div>
+    </section>
 
-      {/* --- ADMIN DASHBOARD --- */}
-      {isAdminMode && isRealAdmin && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 w-full max-w-6xl rounded-[3rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col h-[90vh]">
-            <div className="p-8 border-b border-white/5 flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-blue-600 rounded-2xl text-white"><Settings size={24} /></div>
-                <div>
-                  <h3 className="text-xl font-bold text-white">Admin Control Center</h3>
-                  <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest">Active Session: {user.email}</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <button onClick={() => handleSave(data)} className="px-8 py-3 bg-blue-600 text-white rounded-full text-xs font-bold flex items-center gap-2"><Save size={16} /> SIMPAN SEMUA</button>
-                <button onClick={() => setIsAdminMode(false)} className="p-3 hover:bg-white/5 rounded-full text-slate-500"><X size={20} /></button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-10 space-y-12">
-              {/* Requests Management Section */}
-              <div className="space-y-6">
-                <h4 className="text-sm font-black text-white uppercase tracking-[0.2em] flex items-center gap-2"><Briefcase size={16}/> Pesanan Klien Masuk</h4>
-                <div className="grid grid-cols-1 gap-4">
-                  {clientRequests.length === 0 ? (
-                    <div className="p-12 text-center text-slate-600 border border-dashed border-white/5 rounded-3xl italic">Belum ada pesanan masuk.</div>
-                  ) : (
-                    clientRequests.map(req => (
-                      <div key={req.id} className="bg-white/5 p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row justify-between gap-6">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-white font-bold">{req.name}</span>
-                            <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full uppercase font-black tracking-tighter">{req.type}</span>
-                          </div>
-                          <p className="text-xs text-slate-400 mb-2 italic">{req.email}</p>
-                          <p className="text-sm text-slate-200">{req.description}</p>
-                        </div>
-                        <div className="shrink-0 flex items-center gap-4">
-                          <a href={`mailto:${req.email}`} className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"><Mail size={16} /></a>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Profile & Portfolio Management */}
-              <div className="space-y-8">
-                <h4 className="text-sm font-black text-white uppercase tracking-[0.2em]">Pengaturan Profil & Portofolio</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <div className="space-y-2">
-                    <label className="text-[10px] text-slate-500 font-bold uppercase">Nama Lengkap</label>
-                    <input type="text" value={data.profile.name} onChange={(e) => setData({...data, profile: {...data.profile, name: e.target.value}})} className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-slate-500 font-bold uppercase">WhatsApp (Format: 628xxx)</label>
-                    <input type="text" value={data.profile.phone} onChange={(e) => setData({...data, profile: {...data.profile, phone: e.target.value}})} className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white" />
-                  </div>
-                </div>
-
-                <div className="space-y-6 pt-4">
-                   <div className="flex justify-between items-center">
-                    <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Daftar Proyek</h5>
-                    <button onClick={() => setData({...data, projects: [...data.projects, { id: Date.now().toString(), title: 'Judul Baru', category: 'Kategori', impact: 'Impact', icon: 'pen-tool', imageUrl: '' }]})} className="p-2 bg-blue-500/10 text-blue-400 rounded-lg"><Plus size={16}/></button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4">
-                    {data.projects.map((p, idx) => (
-                      <div key={p.id} className="bg-white/5 p-6 rounded-2xl border border-white/5 space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <input type="text" value={p.title} onChange={(e) => {
-                            const n = [...data.projects]; n[idx].title = e.target.value; setData({...data, projects: n});
-                          }} placeholder="Judul Proyek" className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white" />
-                          <input type="text" value={p.imageUrl} onChange={(e) => {
-                            const n = [...data.projects]; n[idx].imageUrl = e.target.value; setData({...data, projects: n});
-                          }} placeholder="Link Google Drive" className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-blue-400" />
-                        </div>
-                        <button onClick={() => setData({...data, projects: data.projects.filter(proj => proj.id !== p.id)})} className="text-red-500 text-[10px] font-bold uppercase flex items-center gap-1"><Trash2 size={12}/> Hapus</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    <section id="contact">
+      <h2 class="section-heading">Hubungi Saya</h2>
+      <p class="section-subtitle">Saya siap membantu Anda membuat konten visual yang menarik dan profesional.</p>
+      <div class="contact-grid">
+        <div class="contact-card">
+          <h4 class="contact-card-title">WhatsApp</h4>
+          <p class="contact-card-text">Hubungi langsung lewat WhatsApp untuk briefing cepat dan penawaran harga.</p>
+          <p class="contact-card-text"><a href="https://wa.me/6285600016162" target="_blank">+62 856-0001-6162</a></p>
         </div>
-      )}
+        <div class="contact-card">
+          <h4 class="contact-card-title">Email</h4>
+          <p class="contact-card-text">Kirim detail proyek Anda agar bisa saya analisis dan balas dengan opsi desain terbaik.</p>
+          <p class="contact-card-text"><a href="mailto:andika.salman@gmail.com">andika.salman@gmail.com</a></p>
+        </div>
+        <div class="contact-card">
+          <h4 class="contact-card-title">Instagram</h4>
+          <p class="contact-card-text">Lihat hasil karya dan cerita kreatif di feed Instagram saya.</p>
+          <p class="contact-card-text"><a href="https://instagram.com/andksimn_422" target="_blank">@andksimn_422</a></p>
+        </div>
+      </div>
+    </section>
 
-      <footer className="py-20 border-t border-white/5 text-center text-slate-700 text-[10px] font-black tracking-[0.5em] uppercase">
-        © 2024 Design by Salman • Professional Visual Engineer
-      </footer>
-    </div>
-  );
-}
+    <footer class="footer">© 2026 Andika Salman Albani — Desain visual & strategi kreatif</footer>
+  </div>
+</body>
+</html>
